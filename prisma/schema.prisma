@@ -19,4 +19,52 @@ model User {
   provider      String   @default("google")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  apiKeys       ApiKey[]
+}
+
+enum ApiKeyEnvironment {
+  DEVELOPMENT
+  PRODUCTION
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+model ApiKey {
+  id          String            @id @default(cuid())
+  userId      String
+  name        String
+  environment ApiKeyEnvironment
+  prefix      String
+  lastFour    String
+  keyHash     String            @unique
+  status      ApiKeyStatus      @default(ACTIVE)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  lastUsedAt  DateTime?
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    Message[]
+
+  @@index([userId, createdAt])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  apiKeyId    String
+  sender      String
+  email       String
+  subject     String?
+  phone       String?
+  website     String?
+  message     String
+  origin      String?
+  userAgent   String?
+  ipAddress   String?
+  receivedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  apiKey      ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId, receivedAt])
 }
