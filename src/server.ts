@@ -7,8 +7,17 @@ import express, {
 
 import { env } from "./config/env"
 import authRoutes from "./routes/auth.routes"
+import apiKeyRoutes from "./routes/apiKey.routes"
+import messageRoutes from "./routes/message.routes"
+import { submitMessage } from "./controllers/message.controller"
 
 const app = express()
+
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
+
+app.options("/api/messages", cors())
+app.post("/api/messages", cors(), submitMessage)
 
 app.use(
   cors({
@@ -27,14 +36,13 @@ app.use(
   })
 )
 
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
-
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" })
 })
 
 app.use("/api/auth", authRoutes)
+app.use("/api/api-keys", apiKeyRoutes)
+app.use("/api/messages", messageRoutes)
 
 app.use((_req, res) => {
   res.status(404).json({ message: "Route not found" })
