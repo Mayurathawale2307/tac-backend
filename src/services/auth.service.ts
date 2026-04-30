@@ -80,6 +80,15 @@ async function upsertGoogleUser(profile: GoogleProfile) {
       where: {
         id: existingUser.id,
       },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        picture: true,
+        emailVerified: true,
+        provider: true,
+        createdAt: true,
+      },
     })
   }
 
@@ -93,6 +102,15 @@ async function upsertGoogleUser(profile: GoogleProfile) {
       name: profile.name,
       picture: profile.picture,
       provider: "google",
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      picture: true,
+      emailVerified: true,
+      provider: true,
+      createdAt: true,
     },
   })
 }
