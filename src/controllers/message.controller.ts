@@ -2,11 +2,16 @@ import type { Request, Response } from "express"
 
 import { prisma } from "../lib/prisma"
 import {
+  readApiKeyFormFields,
+  type SubmittedCustomField,
+} from "../utils/formFields"
+import {
   formatApiKeyEnvironment,
   formatApiKeyStatus,
   hashApiKey,
   maskApiKey,
 } from "../utils/apiKey"
+import { buildUploadUrl, removeUploadedFiles } from "../utils/uploads"
 
 function readOptionalString(value: unknown) {
   if (typeof value !== "string") {
@@ -19,6 +24,11 @@ function readOptionalString(value: unknown) {
 
 function readRequiredString(value: unknown) {
   return readOptionalString(value) ?? ""
+}
+
+function readUploadedFiles(req: Request) {
+  const requestWithFiles = req as Request & { files?: Express.Multer.File[] }
+  return Array.isArray(requestWithFiles.files) ? requestWithFiles.files : []
 }
 
 function parseSubmittedApiKey(req: Request) {
@@ -44,6 +54,7 @@ function parseSubmittedApiKey(req: Request) {
 }
 
 function serializeMessage(message: {
+  customFields?: unknown
   email: string
   id: string
   message: string
@@ -54,6 +65,9 @@ function serializeMessage(message: {
   website: string | null
 }) {
   return {
+    customFields: Array.isArray(message.customFields)
+      ? (message.customFields as SubmittedCustomField[])
+      : [],
     email: message.email,
     id: message.id,
     message: message.message,
@@ -66,9 +80,13 @@ function serializeMessage(message: {
 }
 
 async function submitMessage(req: Request, res: Response) {
+  const uploadedFiles = readUploadedFiles(req)
+
+  try {
   const submittedApiKey = parseSubmittedApiKey(req)
 
   if (!submittedApiKey) {
+    await removeUploadedFiles(uploadedFiles)
     res.status(401).json({ message: "API key is required." })
     return
   }
@@ -78,9 +96,11 @@ async function submitMessage(req: Request, res: Response) {
   const messageText = readRequiredString(req.body.message)
   const subject = readOptionalString(req.body.subject)
   const phone = readOptionalString(req.body.phone)
-  const website = readOptionalString(req.body.website) ?? readOptionalString(req.header("origin"))
+  const origin = readOptionalString(req.header("origin"))
+  const website = readOptionalString(req.body.website) ?? origin
 
   if (!sender || !email || !messageText) {
+    await removeUploadedFiles(uploadedFiles)
     res.status(400).json({
       message: "name, email, and message are required.",
     })
@@ -94,13 +114,75 @@ async function submitMessage(req: Request, res: Response) {
   })
 
   if (!apiKey) {
+    await removeUploadedFiles(uploadedFiles)
     res.status(401).json({ message: "Invalid API key." })
     return
   }
 
   if (apiKey.status === "REVOKED") {
+    await removeUploadedFiles(uploadedFiles)
     res.status(403).json({ message: "This API key has been revoked." })
     return
+  }
+
+  const configuredFormFields = readApiKeyFormFields(apiKey.formFields)
+  const submittedCustomFields: SubmittedCustomField[] = []
+  const usedFilePaths = new Set<string>()
+
+  for (const field of configuredFormFields) {
+    if (field.type === "file") {
+      const uploadedFile = uploadedFiles.find((file) => file.fieldname === field.name)
+
+      if (field.required && !uploadedFile) {
+        await removeUploadedFiles(uploadedFiles)
+        res.status(400).json({
+          message: `${field.label} is required.`,
+        })
+        return
+      }
+
+      if (uploadedFile) {
+        usedFilePaths.add(uploadedFile.path)
+        submittedCustomFields.push({
+          fieldId: field.id,
+          fileName: uploadedFile.originalname,
+          fileUrl: buildUploadUrl(uploadedFile.filename),
+          label: field.label,
+          mimeType: uploadedFile.mimetype,
+          name: field.name,
+          size: uploadedFile.size,
+          type: field.type,
+        })
+      }
+
+      continue
+    }
+
+    const value = readOptionalString(req.body[field.name])
+
+    if (field.required && !value) {
+      await removeUploadedFiles(uploadedFiles)
+      res.status(400).json({
+        message: `${field.label} is required.`,
+      })
+      return
+    }
+
+    if (value) {
+      submittedCustomFields.push({
+        fieldId: field.id,
+        label: field.label,
+        name: field.name,
+        type: field.type,
+        value,
+      })
+    }
+  }
+
+  const unusedFiles = uploadedFiles.filter((file) => !usedFilePaths.has(file.path))
+
+  if (unusedFiles.length > 0) {
+    await removeUploadedFiles(unusedFiles)
   }
 
   const ipAddressHeader = req.header("x-forwarded-for")
@@ -114,10 +196,12 @@ async function submitMessage(req: Request, res: Response) {
     const message = await tx.message.create({
       data: {
         apiKeyId: apiKey.id,
+        customFields:
+          submittedCustomFields.length > 0 ? submittedCustomFields : undefined,
         email,
         ipAddress,
         message: messageText,
-        origin: readOptionalString(req.header("origin")),
+        origin,
         phone,
         sender,
         subject,
@@ -145,6 +229,11 @@ async function submitMessage(req: Request, res: Response) {
       receivedAt: createdMessage.receivedAt.toISOString(),
     },
   })
+  } catch (error) {
+    await removeUploadedFiles(uploadedFiles)
+    console.error("Submit message error:", error)
+    res.status(500).json({ message: "Unable to receive message." })
+  }
 }
 
 async function listMessageFeeds(req: Request, res: Response) {
@@ -163,6 +252,7 @@ async function listMessageFeeds(req: Request, res: Response) {
     .map((apiKey) => ({
       apiKey: maskApiKey(apiKey.prefix, apiKey.lastFour),
       environment: formatApiKeyEnvironment(apiKey.environment),
+      formFields: readApiKeyFormFields(apiKey.formFields),
       id: apiKey.id,
       keyName: apiKey.name,
       lastUsedAt: apiKey.lastUsedAt?.toISOString() ?? null,

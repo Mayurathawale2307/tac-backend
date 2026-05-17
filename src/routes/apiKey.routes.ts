@@ -6,6 +6,7 @@ import {
   deleteApiKeyRecord,
   listApiKeys,
   revokeApiKeyRecord,
+  updateApiKeyFormFields,
 } from "../controllers/apiKey.controller"
 
 const apiKeyRoutes = Router()
@@ -13,6 +14,7 @@ const apiKeyRoutes = Router()
 apiKeyRoutes.use(requireAuth)
 apiKeyRoutes.get("/", listApiKeys)
 apiKeyRoutes.post("/", createApiKeyRecord)
+apiKeyRoutes.patch("/:apiKeyId/form-fields", updateApiKeyFormFields)
 apiKeyRoutes.post("/:apiKeyId/revoke", revokeApiKeyRecord)
 apiKeyRoutes.delete("/:apiKeyId", deleteApiKeyRecord)
 

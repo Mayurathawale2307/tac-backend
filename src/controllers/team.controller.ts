@@ -1,6 +1,10 @@
 import type { Request, Response } from "express"
 import { prisma } from "../lib/prisma"
 
+function readParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
+}
+
 // Create a new team
 export async function createTeam(req: Request, res: Response) {
   try {
@@ -101,8 +105,13 @@ export async function listUserTeams(req: Request, res: Response) {
 // Get single team details
 export async function getTeam(req: Request, res: Response) {
   try {
-    const { teamId } = req.params
+    const teamId = readParam(req.params.teamId)
     const userId = req.auth!.userId
+
+    if (!teamId) {
+      res.status(400).json({ message: "Team id is required" })
+      return
+    }
 
     // Check if user is a member of the team
     const membership = await prisma.teamMember.findUnique({
@@ -164,9 +173,14 @@ export async function getTeam(req: Request, res: Response) {
 // Add member to team
 export async function addTeamMember(req: Request, res: Response) {
   try {
-    const { teamId } = req.params
+    const teamId = readParam(req.params.teamId)
     const { email, role = "MEMBER" } = req.body
     const userId = req.auth!.userId
+
+    if (!teamId) {
+      res.status(400).json({ message: "Team id is required" })
+      return
+    }
 
     if (!email || typeof email !== "string") {
       res.status(400).json({ message: "Email is required" })
@@ -244,8 +258,14 @@ export async function addTeamMember(req: Request, res: Response) {
 // Remove member from team
 export async function removeTeamMember(req: Request, res: Response) {
   try {
-    const { teamId, memberId } = req.params
+    const teamId = readParam(req.params.teamId)
+    const memberId = readParam(req.params.memberId)
     const userId = req.auth!.userId
+
+    if (!teamId || !memberId) {
+      res.status(400).json({ message: "Team id and member id are required" })
+      return
+    }
 
     // Check if requester is admin or owner
     const requesterMembership = await prisma.teamMember.findUnique({
@@ -295,10 +315,15 @@ export async function removeTeamMember(req: Request, res: Response) {
 // Get team messages
 export async function getTeamMessages(req: Request, res: Response) {
   try {
-    const { teamId } = req.params
+    const teamId = readParam(req.params.teamId)
     const userId = req.auth!.userId
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200)
     const offset = parseInt(req.query.offset as string) || 0
+
+    if (!teamId) {
+      res.status(400).json({ message: "Team id is required" })
+      return
+    }
 
     // Check if user is a member of the team
     const membership = await prisma.teamMember.findUnique({
@@ -383,9 +408,14 @@ export async function getTeamMessages(req: Request, res: Response) {
 // Update team name (owner only)
 export async function updateTeam(req: Request, res: Response) {
   try {
-    const { teamId } = req.params
+    const teamId = readParam(req.params.teamId)
     const { name } = req.body
     const userId = req.auth!.userId
+
+    if (!teamId) {
+      res.status(400).json({ message: "Team id is required" })
+      return
+    }
 
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ message: "Team name is required" })

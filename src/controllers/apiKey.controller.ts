@@ -2,6 +2,10 @@ import type { Request, Response } from "express"
 
 import { prisma } from "../lib/prisma"
 import {
+  normalizeApiKeyFormFields,
+  readApiKeyFormFields,
+} from "../utils/formFields"
+import {
   formatApiKeyEnvironment,
   formatApiKeyStatus,
   generateApiKey,
@@ -16,12 +20,14 @@ function serializeApiKey(apiKey: {
   lastFour: string
   lastUsedAt: Date | null
   name: string
+  formFields?: unknown
   prefix: string
   status: "ACTIVE" | "REVOKED"
 }) {
   return {
     createdAt: apiKey.createdAt.toISOString(),
     environment: formatApiKeyEnvironment(apiKey.environment),
+    formFields: readApiKeyFormFields(apiKey.formFields),
     id: apiKey.id,
     lastUsedAt: apiKey.lastUsedAt?.toISOString() ?? null,
     maskedKey: maskApiKey(apiKey.prefix, apiKey.lastFour),
@@ -80,6 +86,44 @@ async function createApiKeyRecord(req: Request, res: Response) {
       ...serializeApiKey(apiKey),
       fullKey: generatedKey.fullKey,
     },
+  })
+}
+
+async function updateApiKeyFormFields(req: Request, res: Response) {
+  const apiKeyId = Array.isArray(req.params.apiKeyId)
+    ? req.params.apiKeyId[0]
+    : req.params.apiKeyId
+
+  if (!apiKeyId) {
+    res.status(400).json({ message: "API key id is required." })
+    return
+  }
+
+  const existingApiKey = await prisma.apiKey.findFirst({
+    where: {
+      id: apiKeyId,
+      userId: req.auth!.userId,
+    },
+  })
+
+  if (!existingApiKey) {
+    res.status(404).json({ message: "API key not found." })
+    return
+  }
+
+  const formFields = normalizeApiKeyFormFields(req.body.formFields)
+
+  const apiKey = await prisma.apiKey.update({
+    data: {
+      formFields,
+    },
+    where: {
+      id: existingApiKey.id,
+    },
+  })
+
+  res.json({
+    apiKey: serializeApiKey(apiKey),
   })
 }
 
@@ -155,4 +199,5 @@ export {
   deleteApiKeyRecord,
   listApiKeys,
   revokeApiKeyRecord,
+  updateApiKeyFormFields,
 }

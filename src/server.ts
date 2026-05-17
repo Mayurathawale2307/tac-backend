@@ -1,4 +1,5 @@
 import cors from "cors"
+import path from "node:path"
 import express, {
   type NextFunction,
   type Request,
@@ -11,14 +12,16 @@ import apiKeyRoutes from "./routes/apiKey.routes"
 import messageRoutes from "./routes/message.routes"
 import teamRoutes from "./routes/team.routes"
 import { submitMessage } from "./controllers/message.controller"
+import { upload, uploadsDirectory } from "./utils/uploads"
 
 const app = express()
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+app.use("/uploads", express.static(path.resolve(uploadsDirectory)))
 
 app.options("/api/messages", cors())
-app.post("/api/messages", cors(), submitMessage)
+app.post("/api/messages", cors(), upload.any(), submitMessage)
 
 app.use(
   cors({

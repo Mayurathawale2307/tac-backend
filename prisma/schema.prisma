@@ -42,6 +42,7 @@ model ApiKey {
   prefix      String
   lastFour    String
   keyHash     String            @unique
+  formFields  Json?
   status      ApiKeyStatus      @default(ACTIVE)
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
@@ -55,7 +56,7 @@ model ApiKey {
 }
 
 model Message {
-  id         String   @id @default(cuid())
+  id          String   @id @default(cuid())
   apiKeyId    String
   sender      String
   email       String
@@ -63,6 +64,7 @@ model Message {
   phone       String?
   website     String?
   message     String
+  customFields Json?
   origin      String?
   userAgent   String?
   ipAddress   String?
