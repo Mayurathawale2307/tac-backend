@@ -117,6 +117,7 @@ async function getCurrentUser(req: Request, res: Response) {
       name: true,
       picture: true,
       provider: true,
+      username: true,
     },
     where: {
       id: session.userId,
