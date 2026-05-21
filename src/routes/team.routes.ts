@@ -7,6 +7,7 @@ import {
   removeTeamMember,
   getTeamMessages,
   updateTeam,
+  createTeamApiKey,
 } from "../controllers/team.controller"
 import { requireAuth } from "../middleware/requireAuth"
 
@@ -20,6 +21,7 @@ teamRoutes.post("/", createTeam)
 teamRoutes.get("/", listUserTeams)
 teamRoutes.get("/:teamId", getTeam)
 teamRoutes.patch("/:teamId", updateTeam)
+teamRoutes.post("/:teamId/api-keys", createTeamApiKey)
 
 // Team members
 teamRoutes.post("/:teamId/members", addTeamMember)
