@@ -1,5 +1,9 @@
 import type { Request, Response } from "express"
 import { prisma } from "../lib/prisma"
+import {
+  generateApiKey,
+  parseApiKeyEnvironment,
+} from "../utils/apiKey"
 
 function readParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
@@ -170,7 +174,116 @@ export async function getTeam(req: Request, res: Response) {
   }
 }
 
-// Add member to team
+function serializeTeamApiKey(apiKey: {
+  createdAt: Date
+  environment: "DEVELOPMENT" | "PRODUCTION"
+  id: string
+  lastFour: string
+  lastUsedAt: Date | null
+  name: string
+  prefix: string
+  status: "ACTIVE" | "REVOKED"
+}) {
+  return {
+    createdAt: apiKey.createdAt.toISOString(),
+    environment: apiKey.environment,
+    id: apiKey.id,
+    lastFour: apiKey.lastFour,
+    lastUsedAt: apiKey.lastUsedAt?.toISOString() ?? null,
+    name: apiKey.name,
+    prefix: apiKey.prefix,
+    status: apiKey.status,
+  }
+}
+
+export async function createTeamApiKey(req: Request, res: Response) {
+  try {
+    const teamId = readParam(req.params.teamId)
+    const name = typeof req.body.name === "string" ? req.body.name.trim() : ""
+    const environment = parseApiKeyEnvironment(req.body.environment)
+    const userId = req.auth!.userId
+
+    if (!teamId) {
+      res.status(400).json({ message: "Team id is required" })
+      return
+    }
+
+    if (!name) {
+      res.status(400).json({ message: "API key name is required" })
+      return
+    }
+
+    if (!environment) {
+      res.status(400).json({ message: "A valid API key environment is required" })
+      return
+    }
+
+    const requesterMembership = await prisma.teamMember.findUnique({
+      where: {
+        teamId_userId: {
+          teamId,
+          userId,
+        },
+      },
+    })
+
+    if (!requesterMembership || requesterMembership.role === "MEMBER") {
+      res.status(403).json({ message: "Only team owners and admins can create team API keys" })
+      return
+    }
+
+    const generatedKey = generateApiKey(environment)
+
+    const apiKey = await prisma.apiKey.create({
+      data: {
+        environment,
+        keyHash: generatedKey.keyHash,
+        lastFour: generatedKey.lastFour,
+        name,
+        prefix: generatedKey.prefix,
+        teamId,
+      },
+    })
+
+    res.status(201).json({
+      apiKey: {
+        ...serializeTeamApiKey(apiKey),
+        fullKey: generatedKey.fullKey,
+      },
+    })
+  } catch (error) {
+    console.error("Create team API key error:", error)
+    res.status(500).json({ message: "Failed to create team API key" })
+  }
+}
+
+function serializeTeamInvite(invite: {
+  id: string
+  role: "OWNER" | "ADMIN" | "MEMBER"
+  status: "PENDING" | "ACCEPTED" | "REJECTED"
+  createdAt: Date
+  respondedAt: Date | null
+  team: {
+    id: string
+    name: string
+  }
+  invitedBy: {
+    id: string
+    name: string | null
+    email: string
+  }
+}) {
+  return {
+    id: invite.id,
+    role: invite.role,
+    status: invite.status,
+    createdAt: invite.createdAt.toISOString(),
+    respondedAt: invite.respondedAt?.toISOString() ?? null,
+    team: invite.team,
+    invitedBy: invite.invitedBy,
+  }
+}
+
 export async function addTeamMember(req: Request, res: Response) {
   try {
     const teamId = readParam(req.params.teamId)
@@ -187,7 +300,6 @@ export async function addTeamMember(req: Request, res: Response) {
       return
     }
 
-    // Check if requester is admin or owner
     const requesterMembership = await prisma.teamMember.findUnique({
       where: {
         teamId_userId: {
@@ -198,26 +310,24 @@ export async function addTeamMember(req: Request, res: Response) {
     })
 
     if (!requesterMembership || requesterMembership.role === "MEMBER") {
-      res.status(403).json({ message: "You don't have permission to add members" })
+      res.status(403).json({ message: "You don't have permission to invite members" })
       return
     }
 
-    // Find the user to add
-    const userToAdd = await prisma.user.findUnique({
+    const userToInvite = await prisma.user.findUnique({
       where: { email },
     })
 
-    if (!userToAdd) {
+    if (!userToInvite) {
       res.status(404).json({ message: "User with this email not found" })
       return
     }
 
-    // Check if already a member
     const existingMember = await prisma.teamMember.findUnique({
       where: {
         teamId_userId: {
           teamId,
-          userId: userToAdd.id,
+          userId: userToInvite.id,
         },
       },
     })
@@ -227,31 +337,164 @@ export async function addTeamMember(req: Request, res: Response) {
       return
     }
 
-    const member = await prisma.teamMember.create({
+    const existingInvite = await prisma.teamInvite.findFirst({
+      where: {
+        teamId,
+        invitedUserId: userToInvite.id,
+        status: "PENDING",
+      },
+    })
+
+    if (existingInvite) {
+      res.status(400).json({ message: "This user already has a pending invitation" })
+      return
+    }
+
+    const invite = await prisma.teamInvite.create({
       data: {
         teamId,
-        userId: userToAdd.id,
+        invitedById: userId,
+        invitedUserId: userToInvite.id,
         role,
       },
       include: {
-        user: {
+        team: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        invitedBy: {
           select: {
             id: true,
             name: true,
             email: true,
-            picture: true,
           },
         },
       },
     })
 
     res.status(201).json({
-      message: "Member added successfully",
-      member,
+      message: "Invitation sent successfully",
+      invite: serializeTeamInvite(invite),
     })
   } catch (error) {
     console.error("Add team member error:", error)
-    res.status(500).json({ message: "Failed to add member" })
+    res.status(500).json({ message: "Failed to send invitation" })
+  }
+}
+
+export async function listUserInvites(req: Request, res: Response) {
+  try {
+    const userId = req.auth!.userId
+
+    const invites = await prisma.teamInvite.findMany({
+      where: {
+        invitedUserId: userId,
+        status: "PENDING",
+      },
+      include: {
+        team: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        invitedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    })
+
+    res.json({
+      invites: invites.map(serializeTeamInvite),
+    })
+  } catch (error) {
+    console.error("List user invites error:", error)
+    res.status(500).json({ message: "Failed to load invitations" })
+  }
+}
+
+export async function acceptTeamInvite(req: Request, res: Response) {
+  try {
+    const inviteId = readParam(req.params.inviteId)
+    const userId = req.auth!.userId
+
+    if (!inviteId) {
+      res.status(400).json({ message: "Invite id is required" })
+      return
+    }
+
+    const invite = await prisma.teamInvite.findUnique({
+      where: {
+        id: inviteId,
+      },
+      include: {
+        team: true,
+      },
+    })
+
+    if (!invite || invite.invitedUserId !== userId) {
+      res.status(404).json({ message: "Invitation not found" })
+      return
+    }
+
+    if (invite.status !== "PENDING") {
+      res.status(400).json({ message: "Invitation is no longer pending" })
+      return
+    }
+
+    const existingMember = await prisma.teamMember.findUnique({
+      where: {
+        teamId_userId: {
+          teamId: invite.teamId,
+          userId,
+        },
+      },
+    })
+
+    if (existingMember) {
+      await prisma.teamInvite.update({
+        where: { id: invite.id },
+        data: {
+          status: "ACCEPTED",
+          respondedAt: new Date(),
+        },
+      })
+
+      res.json({ message: "Invitation accepted" })
+      return
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.teamMember.create({
+        data: {
+          teamId: invite.teamId,
+          userId,
+          role: invite.role,
+        },
+      })
+
+      await tx.teamInvite.update({
+        where: { id: invite.id },
+        data: {
+          status: "ACCEPTED",
+          respondedAt: new Date(),
+        },
+      })
+    })
+
+    res.json({ message: "Invitation accepted" })
+  } catch (error) {
+    console.error("Accept team invite error:", error)
+    res.status(500).json({ message: "Failed to accept invitation" })
   }
 }
 
