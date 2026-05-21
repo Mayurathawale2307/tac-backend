@@ -11,6 +11,7 @@ import authRoutes from "./routes/auth.routes"
 import apiKeyRoutes from "./routes/apiKey.routes"
 import inviteRoutes from "./routes/invite.routes"
 import messageRoutes from "./routes/message.routes"
+import operationRoutes from "./routes/operation.routes"
 import teamRoutes from "./routes/team.routes"
 import { submitMessage } from "./controllers/message.controller"
 import { upload, uploadsDirectory } from "./utils/uploads"
@@ -49,6 +50,7 @@ app.use("/api/auth", authRoutes)
 app.use("/api/api-keys", apiKeyRoutes)
 app.use("/api/invites", inviteRoutes)
 app.use("/api/messages", messageRoutes)
+app.use("/api/operations", operationRoutes)
 app.use("/api/teams", teamRoutes)
 
 app.use((_req, res) => {
