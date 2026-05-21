@@ -37,6 +37,7 @@ export async function createTeam(req: Request, res: Response) {
               select: {
                 id: true,
                 name: true,
+                username: true,
                 email: true,
                 picture: true,
               },
@@ -76,6 +77,7 @@ export async function listUserTeams(req: Request, res: Response) {
               select: {
                 id: true,
                 name: true,
+                username: true,
                 email: true,
                 picture: true,
               },
@@ -141,6 +143,7 @@ export async function getTeam(req: Request, res: Response) {
               select: {
                 id: true,
                 name: true,
+                username: true,
                 email: true,
                 picture: true,
               },
@@ -241,6 +244,7 @@ export async function createTeamApiKey(req: Request, res: Response) {
         lastFour: generatedKey.lastFour,
         name,
         prefix: generatedKey.prefix,
+        userId,
         teamId,
       },
     })
@@ -270,6 +274,7 @@ function serializeTeamInvite(invite: {
   invitedBy: {
     id: string
     name: string | null
+    username?: string | null
     email: string
   }
 }) {
@@ -287,7 +292,7 @@ function serializeTeamInvite(invite: {
 export async function addTeamMember(req: Request, res: Response) {
   try {
     const teamId = readParam(req.params.teamId)
-    const { email, role = "MEMBER" } = req.body
+    const { username, role = "MEMBER" } = req.body
     const userId = req.auth!.userId
 
     if (!teamId) {
@@ -295,8 +300,8 @@ export async function addTeamMember(req: Request, res: Response) {
       return
     }
 
-    if (!email || typeof email !== "string") {
-      res.status(400).json({ message: "Email is required" })
+    if (!username || typeof username !== "string") {
+      res.status(400).json({ message: "Username is required" })
       return
     }
 
@@ -315,11 +320,11 @@ export async function addTeamMember(req: Request, res: Response) {
     }
 
     const userToInvite = await prisma.user.findUnique({
-      where: { email },
+      where: { username },
     })
 
     if (!userToInvite) {
-      res.status(404).json({ message: "User with this email not found" })
+      res.status(404).json({ message: "User with this username not found" })
       return
     }
 
@@ -368,6 +373,7 @@ export async function addTeamMember(req: Request, res: Response) {
           select: {
             id: true,
             name: true,
+            username: true,
             email: true,
           },
         },
@@ -404,6 +410,7 @@ export async function listUserInvites(req: Request, res: Response) {
           select: {
             id: true,
             name: true,
+            username: true,
             email: true,
           },
         },

@@ -59,6 +59,36 @@ async function fetchGoogleProfile(accessToken: string) {
   return (await response.json()) as GoogleProfile
 }
 
+function normalizeUsername(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+
+  return normalized || "user"
+}
+
+async function ensureUniqueUsername(baseValue: string) {
+  let username = normalizeUsername(baseValue)
+  let candidate = username
+  let suffix = 1
+
+  while (
+    await prisma.user.findUnique({
+      where: {
+        username: candidate,
+      },
+    })
+  ) {
+    candidate = `${username}${suffix}`
+    suffix += 1
+  }
+
+  return candidate
+}
+
 async function upsertGoogleUser(profile: GoogleProfile) {
   const existingUser = await prisma.user.findFirst({
     where: {
@@ -67,6 +97,8 @@ async function upsertGoogleUser(profile: GoogleProfile) {
   })
 
   if (existingUser) {
+    const username = existingUser.username ?? await ensureUniqueUsername(profile.email.split("@")[0] ?? profile.email)
+
     return prisma.user.update({
       data: {
         email: profile.email,
@@ -76,6 +108,7 @@ async function upsertGoogleUser(profile: GoogleProfile) {
         googleId: profile.sub,
         name: profile.name,
         picture: profile.picture,
+        username,
       },
       where: {
         id: existingUser.id,
@@ -83,6 +116,7 @@ async function upsertGoogleUser(profile: GoogleProfile) {
       select: {
         id: true,
         email: true,
+        username: true,
         name: true,
         picture: true,
         emailVerified: true,
@@ -102,10 +136,12 @@ async function upsertGoogleUser(profile: GoogleProfile) {
       name: profile.name,
       picture: profile.picture,
       provider: "google",
+      username: await ensureUniqueUsername(profile.email.split("@")[0] ?? profile.email),
     },
     select: {
       id: true,
       email: true,
+      username: true,
       name: true,
       picture: true,
       emailVerified: true,
