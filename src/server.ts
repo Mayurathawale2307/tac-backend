@@ -9,6 +9,7 @@ import express, {
 import { env } from "./config/env"
 import authRoutes from "./routes/auth.routes"
 import apiKeyRoutes from "./routes/apiKey.routes"
+import inviteRoutes from "./routes/invite.routes"
 import messageRoutes from "./routes/message.routes"
 import teamRoutes from "./routes/team.routes"
 import { submitMessage } from "./controllers/message.controller"
@@ -46,6 +47,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/auth", authRoutes)
 app.use("/api/api-keys", apiKeyRoutes)
+app.use("/api/invites", inviteRoutes)
 app.use("/api/messages", messageRoutes)
 app.use("/api/teams", teamRoutes)
 
