@@ -21,6 +21,8 @@ model User {
   updatedAt     DateTime @updatedAt
   apiKeys       ApiKey[]
   teams         TeamMember[]
+  sentInvites   TeamInvite[] @relation("SentTeamInvites")
+  receivedInvites TeamInvite[] @relation("ReceivedTeamInvites")
 }
 
 enum ApiKeyEnvironment {
@@ -81,6 +83,12 @@ enum TeamRole {
   MEMBER
 }
 
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 model Team {
   id        String   @id @default(cuid())
   name      String
@@ -88,8 +96,28 @@ model Team {
   updatedAt DateTime @updatedAt
   members   TeamMember[]
   apiKeys   ApiKey[]
+  invites   TeamInvite[]
 
   @@index([createdAt])
+}
+
+model TeamInvite {
+  id             String       @id @default(cuid())
+  teamId         String
+  invitedById    String
+  invitedUserId  String
+  role           TeamRole     @default(MEMBER)
+  status         InviteStatus @default(PENDING)
+  createdAt      DateTime     @default(now())
+  respondedAt    DateTime?
+
+  team           Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedBy      User         @relation("SentTeamInvites", fields: [invitedById], references: [id], onDelete: Cascade)
+  invitedUser    User         @relation("ReceivedTeamInvites", fields: [invitedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, invitedUserId])
+  @@index([invitedUserId, status])
+  @@index([teamId, status])
 }
 
 model TeamMember {
