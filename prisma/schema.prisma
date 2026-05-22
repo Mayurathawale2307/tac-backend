@@ -13,6 +13,9 @@ model User {
   email         String   @unique
   username      String?  @unique
   name          String?
+  bio           String?
+  company       String?
+  website       String?
   givenName     String?
   familyName    String?
   picture       String?
@@ -24,6 +27,8 @@ model User {
   teams         TeamMember[]
   sentInvites   TeamInvite[] @relation("SentTeamInvites")
   receivedInvites TeamInvite[] @relation("ReceivedTeamInvites")
+  sentTeamNotifications TeamNotification[] @relation("SentTeamNotifications")
+  teamNotificationRecipients TeamNotificationRecipient[]
 }
 
 enum ApiKeyEnvironment {
@@ -98,6 +103,7 @@ model Team {
   members   TeamMember[]
   apiKeys   ApiKey[]
   invites   TeamInvite[]
+  notifications TeamNotification[]
 
   @@index([createdAt])
 }
@@ -132,4 +138,33 @@ model TeamMember {
 
   @@unique([teamId, userId])
   @@index([userId, teamId])
+}
+
+model TeamNotification {
+  id        String   @id @default(cuid())
+  teamId     String
+  senderId   String
+  title      String
+  message    String
+  createdAt  DateTime @default(now())
+  team       Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sender     User      @relation("SentTeamNotifications", fields: [senderId], references: [id], onDelete: Cascade)
+  recipients TeamNotificationRecipient[]
+
+  @@index([teamId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+model TeamNotificationRecipient {
+  id             String   @id @default(cuid())
+  notificationId String
+  userId         String
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
+  notification   TeamNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
