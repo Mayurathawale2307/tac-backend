@@ -7,6 +7,7 @@ import multer from "multer"
 import { env } from "../config/env"
 
 const uploadsDirectory = path.resolve(process.cwd(), "uploads")
+const uploadBaseUrl = `${env.backendUrl.replace(/\/+$/, "")}/uploads/`
 
 function ensureUploadsDirectory() {
   fs.mkdirSync(uploadsDirectory, { recursive: true })
@@ -22,6 +23,39 @@ async function removeUploadedFiles(files: Express.Multer.File[]) {
       fs.promises.unlink(file.path).catch(() => undefined)
     )
   )
+}
+
+function resolveUploadedFilePathFromUrl(url: string) {
+  if (!url.startsWith(uploadBaseUrl)) {
+    return null
+  }
+
+  const filename = url.slice(uploadBaseUrl.length)
+
+  if (
+    !filename ||
+    filename.includes("/") ||
+    filename.includes("\\") ||
+    filename.includes("..")
+  ) {
+    return null
+  }
+
+  return path.resolve(uploadsDirectory, filename)
+}
+
+async function removeUploadedFileByUrl(url: string | null | undefined) {
+  if (!url) {
+    return
+  }
+
+  const filePath = resolveUploadedFilePathFromUrl(url)
+
+  if (!filePath) {
+    return
+  }
+
+  await fs.promises.unlink(filePath).catch(() => undefined)
 }
 
 const upload = multer({
@@ -41,4 +75,11 @@ const upload = multer({
   }),
 })
 
-export { buildUploadUrl, ensureUploadsDirectory, removeUploadedFiles, upload, uploadsDirectory }
+export {
+  buildUploadUrl,
+  ensureUploadsDirectory,
+  removeUploadedFileByUrl,
+  removeUploadedFiles,
+  upload,
+  uploadsDirectory,
+}
