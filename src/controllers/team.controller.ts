@@ -289,6 +289,215 @@ function serializeTeamInvite(invite: {
   }
 }
 
+function serializeTeamNotification(notification: {
+  id: string
+  title: string
+  message: string
+  createdAt: Date
+  team: {
+    id: string
+    name: string
+  }
+  sender: {
+    id: string
+    name: string | null
+    username: string | null
+    email: string
+    picture: string | null
+  }
+  recipients: Array<{
+    readAt: Date | null
+  }>
+}) {
+  return {
+    id: notification.id,
+    title: notification.title,
+    message: notification.message,
+    createdAt: notification.createdAt.toISOString(),
+    team: notification.team,
+    sender: notification.sender,
+    recipientCount: notification.recipients.length,
+    unreadRecipientCount: notification.recipients.filter(
+      (recipient) => recipient.readAt === null
+    ).length,
+  }
+}
+
+export async function createTeamNotification(req: Request, res: Response) {
+  try {
+    const teamId = readParam(req.params.teamId)
+    const title = typeof req.body.title === "string" ? req.body.title.trim() : ""
+    const message =
+      typeof req.body.message === "string" ? req.body.message.trim() : ""
+    const userId = req.auth!.userId
+
+    if (!teamId) {
+      res.status(400).json({ message: "Team id is required" })
+      return
+    }
+
+    if (!title) {
+      res.status(400).json({ message: "Notification title is required" })
+      return
+    }
+
+    if (!message) {
+      res.status(400).json({ message: "Notification message is required" })
+      return
+    }
+
+    if (title.length > 120) {
+      res
+        .status(400)
+        .json({ message: "Notification title must be 120 characters or fewer" })
+      return
+    }
+
+    if (message.length > 1000) {
+      res
+        .status(400)
+        .json({ message: "Notification message must be 1000 characters or fewer" })
+      return
+    }
+
+    const requesterMembership = await prisma.teamMember.findUnique({
+      where: {
+        teamId_userId: {
+          teamId,
+          userId,
+        },
+      },
+    })
+
+    if (!requesterMembership || requesterMembership.role === "MEMBER") {
+      res
+        .status(403)
+        .json({ message: "Only team owners and admins can send notifications" })
+      return
+    }
+
+    const teamMembers = await prisma.teamMember.findMany({
+      where: {
+        teamId,
+      },
+      select: {
+        userId: true,
+      },
+    })
+
+    const notification = await prisma.teamNotification.create({
+      data: {
+        teamId,
+        senderId: userId,
+        title,
+        message,
+        recipients: {
+          create: teamMembers.map((member) => ({
+            userId: member.userId,
+            readAt: member.userId === userId ? new Date() : null,
+          })),
+        },
+      },
+      include: {
+        team: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            email: true,
+            picture: true,
+          },
+        },
+        recipients: {
+          select: {
+            readAt: true,
+          },
+        },
+      },
+    })
+
+    res.status(201).json({
+      message: "Notification sent successfully",
+      notification: serializeTeamNotification(notification),
+    })
+  } catch (error) {
+    console.error("Create team notification error:", error)
+    res.status(500).json({ message: "Failed to send notification" })
+  }
+}
+
+export async function listTeamNotifications(req: Request, res: Response) {
+  try {
+    const teamId = readParam(req.params.teamId)
+    const userId = req.auth!.userId
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50)
+
+    if (!teamId) {
+      res.status(400).json({ message: "Team id is required" })
+      return
+    }
+
+    const membership = await prisma.teamMember.findUnique({
+      where: {
+        teamId_userId: {
+          teamId,
+          userId,
+        },
+      },
+    })
+
+    if (!membership) {
+      res.status(403).json({ message: "You don't have access to this team" })
+      return
+    }
+
+    const notifications = await prisma.teamNotification.findMany({
+      where: {
+        teamId,
+      },
+      include: {
+        team: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            email: true,
+            picture: true,
+          },
+        },
+        recipients: {
+          select: {
+            readAt: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: limit,
+    })
+
+    res.json({
+      notifications: notifications.map(serializeTeamNotification),
+    })
+  } catch (error) {
+    console.error("List team notifications error:", error)
+    res.status(500).json({ message: "Failed to fetch team notifications" })
+  }
+}
+
 export async function addTeamMember(req: Request, res: Response) {
   try {
     const teamId = readParam(req.params.teamId)
