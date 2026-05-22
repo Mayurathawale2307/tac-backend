@@ -1,9 +1,11 @@
 import { Router } from "express"
 import {
   createTeam,
+  createTeamNotification,
   listUserTeams,
   getTeam,
   addTeamMember,
+  listTeamNotifications,
   removeTeamMember,
   getTeamMessages,
   updateTeam,
@@ -22,6 +24,8 @@ teamRoutes.get("/", listUserTeams)
 teamRoutes.get("/:teamId", getTeam)
 teamRoutes.patch("/:teamId", updateTeam)
 teamRoutes.post("/:teamId/api-keys", createTeamApiKey)
+teamRoutes.get("/:teamId/notifications", listTeamNotifications)
+teamRoutes.post("/:teamId/notifications", createTeamNotification)
 
 // Team members
 teamRoutes.post("/:teamId/members", addTeamMember)
