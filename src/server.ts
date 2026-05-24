@@ -33,7 +33,12 @@ app.use(
       origin: string | undefined,
       callback: (error: Error | null, allow?: boolean) => void
     ) {
-      if (!origin || origin === env.frontendUrl) {
+      const normalizedOrigin = origin?.replace(/\/+$/, "")
+
+      if (
+        !normalizedOrigin ||
+        env.allowedFrontendOrigins.includes(normalizedOrigin)
+      ) {
         callback(null, true)
         return
       }
