@@ -4,18 +4,31 @@ import fs from "node:fs"
 import dotenv from "dotenv"
 
 const projectRoot = path.resolve(__dirname, "../..")
-const envCandidates = [
-  path.resolve(projectRoot, ".env"),
-  path.resolve(projectRoot, "src/.env"),
-  path.resolve(process.cwd(), ".env"),
-  path.resolve(process.cwd(), "src/.env"),
-  path.resolve(process.cwd(), "tac-backend/.env"),
-  path.resolve(process.cwd(), "tac-backend/src/.env"),
+const nodeEnv = process.env.NODE_ENV?.trim() || "development"
+const envFileNames = [
+  ".env",
+  `.env.${nodeEnv}`,
+  ".env.local",
+  `.env.${nodeEnv}.local`,
 ]
+const envBases = [
+  projectRoot,
+  path.resolve(projectRoot, "src"),
+  process.cwd(),
+  path.resolve(process.cwd(), "src"),
+  path.resolve(process.cwd(), "tac-backend"),
+  path.resolve(process.cwd(), "tac-backend/src"),
+]
+const envCandidates = envFileNames.flatMap((fileName) =>
+  envBases.map((basePath) => path.resolve(basePath, fileName))
+)
+const loadedEnvPaths = new Set<string>()
 
 for (const envPath of envCandidates) {
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath, override: false })
+  if (!loadedEnvPaths.has(envPath) && fs.existsSync(envPath)) {
+    const override = envPath.endsWith(".local")
+    dotenv.config({ path: envPath, override })
+    loadedEnvPaths.add(envPath)
   }
 }
 
@@ -31,6 +44,18 @@ function getRequiredEnv(name: string) {
 
 function normalizeUrl(url: string) {
   return url.replace(/\/+$/, "")
+}
+
+function parseUrlList(value?: string) {
+  if (!value) {
+    return []
+  }
+
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map(normalizeUrl)
 }
 
 function normalizeGoogleCallbackUrl(callbackUrl: string, backendUrl: string) {
@@ -56,14 +81,38 @@ function normalizeGoogleCallbackUrl(callbackUrl: string, backendUrl: string) {
 }
 
 const port = Number(process.env.PORT ?? 4000)
-const frontendUrl = normalizeUrl(process.env.FRONTEND_URL ?? "http://localhost:3000")
+const localFrontendOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+]
+const deployedFrontendOrigin = "https://tac-frontend-peach.vercel.app"
+const deployedBackendUrl = "https://tac-backend-erf1.onrender.com"
+const isProduction = nodeEnv === "production"
+const defaultFrontendUrl = isProduction
+  ? deployedFrontendOrigin
+  : localFrontendOrigins[0]
+const defaultFrontendOrigins = isProduction
+  ? [deployedFrontendOrigin, ...localFrontendOrigins]
+  : [...localFrontendOrigins, deployedFrontendOrigin]
+const configuredFrontendOrigins = [
+  ...parseUrlList(process.env.FRONTEND_URL),
+  ...parseUrlList(process.env.FRONTEND_URLS),
+]
+const allowedFrontendOrigins = Array.from(
+  new Set([...configuredFrontendOrigins, ...defaultFrontendOrigins])
+)
+const frontendUrl = normalizeUrl(
+  process.env.FRONTEND_URL?.trim() ?? defaultFrontendUrl
+)
 const backendUrl = normalizeUrl(
-  process.env.BACKEND_URL ?? `http://localhost:${port}`
+  process.env.BACKEND_URL?.trim() ??
+    (isProduction ? deployedBackendUrl : `http://localhost:${port}`)
 )
 
 export const env = {
-  nodeEnv: process.env.NODE_ENV ?? "development",
+  nodeEnv,
   port,
+  allowedFrontendOrigins,
   frontendUrl,
   backendUrl,
   databaseUrl: getRequiredEnv("DATABASE_URL"),
@@ -74,5 +123,5 @@ export const env = {
     backendUrl
   ),
   sessionSecret: getRequiredEnv("SESSION_SECRET"),
-  isProduction: (process.env.NODE_ENV ?? "development") === "production",
+  isProduction,
 }
