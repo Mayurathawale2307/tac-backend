@@ -5,6 +5,8 @@ import dotenv from "dotenv"
 
 const projectRoot = path.resolve(__dirname, "../..")
 const nodeEnv = process.env.NODE_ENV?.trim() || "development"
+const isRenderDeployment = process.env.RENDER === "true"
+const isVercelDeployment = process.env.VERCEL === "1"
 const envFileNames = [
   ".env",
   `.env.${nodeEnv}`,
@@ -87,7 +89,10 @@ const localFrontendOrigins = [
 ]
 const deployedFrontendOrigin = "https://tac-frontend-peach.vercel.app"
 const deployedBackendUrl = "https://tac-backend-erf1.onrender.com"
-const isProduction = nodeEnv === "production"
+const isProduction =
+  nodeEnv === "production" ||
+  isRenderDeployment ||
+  isVercelDeployment
 const defaultFrontendUrl = isProduction
   ? deployedFrontendOrigin
   : localFrontendOrigins[0]
