@@ -18,12 +18,64 @@ import { createSessionToken, verifySessionToken } from "../utils/session"
 import { removeUploadedFiles } from "../utils/uploads"
 
 const OAUTH_STATE_COOKIE = "tac_google_oauth_state"
+const FRONTEND_ORIGIN_COOKIE = "tac_frontend_origin"
 const SESSION_COOKIE = "tac_session"
 const OAUTH_STATE_TTL_SECONDS = 60 * 10
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7
 
-function buildFrontendRedirect(pathname: string, params?: Record<string, string>) {
-  const url = new URL(pathname, env.frontendUrl)
+function getCookieSecurityOptions() {
+  return {
+    httpOnly: true,
+    sameSite: env.isProduction ? "None" : "Lax",
+    secure: env.isProduction,
+  } as const
+}
+
+function normalizeOrigin(origin: string) {
+  return origin.replace(/\/+$/, "")
+}
+
+function getAllowedFrontendOrigin(origin?: string) {
+  if (!origin) {
+    return null
+  }
+
+  try {
+    const normalizedOrigin = normalizeOrigin(new URL(origin).origin)
+
+    if (env.allowedFrontendOrigins.includes(normalizedOrigin)) {
+      return normalizedOrigin
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function getRequestFrontendOrigin(req: Request) {
+  const frontendOriginQuery =
+    typeof req.query.frontend_origin === "string"
+      ? req.query.frontend_origin
+      : undefined
+  const refererOrigin = typeof req.headers.referer === "string"
+    ? getAllowedFrontendOrigin(req.headers.referer)
+    : null
+
+  return (
+    getAllowedFrontendOrigin(frontendOriginQuery) ??
+    getAllowedFrontendOrigin(req.headers.origin) ??
+    refererOrigin ??
+    env.frontendUrl
+  )
+}
+
+function buildFrontendRedirect(
+  frontendOrigin: string,
+  pathname: string,
+  params?: Record<string, string>
+) {
+  const url = new URL(pathname, frontendOrigin)
 
   if (params) {
     for (const [key, value] of Object.entries(params)) {
@@ -34,16 +86,23 @@ function buildFrontendRedirect(pathname: string, params?: Record<string, string>
   return url.toString()
 }
 
-async function startGoogleAuth(_req: Request, res: Response) {
+async function startGoogleAuth(req: Request, res: Response) {
   const state = crypto.randomBytes(24).toString("hex")
+  const frontendOrigin = getRequestFrontendOrigin(req)
+  const cookieSecurityOptions = getCookieSecurityOptions()
 
   res.setHeader(
     "Set-Cookie",
-    serializeCookie(OAUTH_STATE_COOKIE, state, {
-      httpOnly: true,
-      maxAge: OAUTH_STATE_TTL_SECONDS,
-      secure: env.isProduction,
-    })
+    [
+      serializeCookie(OAUTH_STATE_COOKIE, state, {
+        ...cookieSecurityOptions,
+        maxAge: OAUTH_STATE_TTL_SECONDS,
+      }),
+      serializeCookie(FRONTEND_ORIGIN_COOKIE, frontendOrigin, {
+        ...cookieSecurityOptions,
+        maxAge: OAUTH_STATE_TTL_SECONDS,
+      }),
+    ]
   )
 
   res.redirect(buildGoogleAuthorizationUrl(state))
@@ -54,18 +113,21 @@ async function handleGoogleCallback(req: Request, res: Response) {
   const state = typeof req.query.state === "string" ? req.query.state : undefined
   const cookies = parseCookies(req.headers.cookie)
   const storedState = cookies[OAUTH_STATE_COOKIE]
+  const frontendOrigin =
+    getAllowedFrontendOrigin(cookies[FRONTEND_ORIGIN_COOKIE]) ?? env.frontendUrl
+  const cookieSecurityOptions = getCookieSecurityOptions()
 
-  res.append(
+  res.setHeader(
     "Set-Cookie",
-    clearCookie(OAUTH_STATE_COOKIE, {
-      httpOnly: true,
-      secure: env.isProduction,
-    })
+    [
+      clearCookie(OAUTH_STATE_COOKIE, cookieSecurityOptions),
+      clearCookie(FRONTEND_ORIGIN_COOKIE, cookieSecurityOptions),
+    ]
   )
 
   if (!code || !state || !storedState || state !== storedState) {
     res.redirect(
-      buildFrontendRedirect("/login", {
+      buildFrontendRedirect(frontendOrigin, "/login", {
         error: "google_oauth_state_mismatch",
       })
     )
@@ -86,17 +148,20 @@ async function handleGoogleCallback(req: Request, res: Response) {
     res.append(
       "Set-Cookie",
       serializeCookie(SESSION_COOKIE, sessionToken, {
-        httpOnly: true,
+        ...cookieSecurityOptions,
         maxAge: SESSION_TTL_SECONDS,
-        secure: env.isProduction,
       })
     )
 
-    res.redirect(buildFrontendRedirect("/dashboard", { auth: "success" }))
+    res.redirect(
+      buildFrontendRedirect(frontendOrigin, "/dashboard", {
+        auth: "success",
+      })
+    )
   } catch (error) {
     console.error(error)
     res.redirect(
-      buildFrontendRedirect("/login", {
+      buildFrontendRedirect(frontendOrigin, "/login", {
         error: "google_oauth_failed",
       })
     )
@@ -123,8 +188,7 @@ async function getCurrentUser(req: Request, res: Response) {
     res.append(
       "Set-Cookie",
       clearCookie(SESSION_COOKIE, {
-        httpOnly: true,
-        secure: env.isProduction,
+        ...getCookieSecurityOptions(),
       })
     )
     res.status(401).json({ user: null })
@@ -169,8 +233,7 @@ async function logout(_req: Request, res: Response) {
   res.setHeader(
     "Set-Cookie",
     clearCookie(SESSION_COOKIE, {
-      httpOnly: true,
-      secure: env.isProduction,
+      ...getCookieSecurityOptions(),
     })
   )
 
