@@ -1,20 +1,24 @@
 {
   "name": "tac-backend",
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
   "scripts": {
+    "build": "tsc --noEmit",
+    "predev": "npm run prisma:push",
     "dev": "tsx watch index.ts",
     "start": "tsx index.ts",
     "typecheck": "tsc --noEmit",
+
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
-    "prisma:push": "prisma db push --schema=prisma/schema.prisma",
+    "prisma:push": "node ./scripts/prisma-push.js",
+
+    "postinstall": "prisma generate --schema=prisma/schema.prisma",
+
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+
   "type": "commonjs",
+
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "@types/multer": "^2.1.0",
@@ -23,6 +27,7 @@
     "express": "^5.2.1",
     "multer": "^2.1.1"
   },
+
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
