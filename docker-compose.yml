@@ -2,14 +2,8 @@ services:
   backend:
     build: .
     env_file:
-      - .env
+      - .env.local
     environment:
-      PORT: 4000
-      NODE_ENV: development
-      BACKEND_URL: http://localhost:4000
-      FRONTEND_URL: http://localhost:3000
-      FRONTEND_URLS: http://localhost:3000,http://127.0.0.1:3000,https://tac-frontend-peach.vercel.app
-      GOOGLE_CALLBACK_URL: http://localhost:4000/api/auth/google/callback
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tac?schema=public
     command: sh -c "npx prisma db push --schema=prisma/schema.prisma && npm start"
     depends_on:
