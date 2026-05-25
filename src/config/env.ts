@@ -83,22 +83,22 @@ function normalizeGoogleCallbackUrl(callbackUrl: string, backendUrl: string) {
 }
 
 const port = Number(process.env.PORT ?? 4000)
-const localFrontendOrigins = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-]
-const deployedFrontendOrigin = "https://tac-frontend-peach.vercel.app"
-const deployedBackendUrl = "https://tac-backend-erf1.onrender.com"
+const deployedFrontendOrigin = process.env.FRONTEND_URL ?? "https://tac-frontend-peach.vercel.app"
+const deployedBackendUrl = process.env.BACKEND_URL ?? "https://tac-backend-erf1.onrender.com"
 const isProduction =
   nodeEnv === "production" ||
   isRenderDeployment ||
   isVercelDeployment
+const localFrontendOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+]
 const defaultFrontendUrl = isProduction
   ? deployedFrontendOrigin
   : localFrontendOrigins[0]
 const defaultFrontendOrigins = isProduction
-  ? [deployedFrontendOrigin, ...localFrontendOrigins]
-  : [...localFrontendOrigins, deployedFrontendOrigin]
+  ? [deployedFrontendOrigin]
+  : [...localFrontendOrigins]
 const configuredFrontendOrigins = [
   ...parseUrlList(process.env.FRONTEND_URL),
   ...parseUrlList(process.env.FRONTEND_URLS),
