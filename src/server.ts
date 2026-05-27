@@ -26,6 +26,13 @@ app.use("/uploads", express.static(path.resolve(uploadsDirectory)))
 app.options("/api/messages", cors())
 app.post("/api/messages", cors(), upload.any(), submitMessage)
 
+app.options("/api/public/messages", cors())
+app.post(
+  "/api/public/messages",
+  cors(),
+  submitMessage
+)
+
 app.use(
   cors({
     credentials: true,
