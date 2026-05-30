@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma"
 import { env } from "../config/env"
 import { buildUploadUrl, removeUploadedFileByUrl } from "../utils/uploads"
+import { invalidateUserCache } from "../lib/redis"
 
 type GoogleTokenResponse = {
   access_token: string
@@ -124,7 +125,7 @@ async function upsertGoogleUser(profile: GoogleProfile) {
   if (existingUser) {
     const username = existingUser.username ?? await ensureUniqueUsername(profile.email.split("@")[0] ?? profile.email)
 
-    return prisma.user.update({
+    const updatedUser = await prisma.user.update({
       data: {
         email: profile.email,
         emailVerified: profile.email_verified,
@@ -138,6 +139,9 @@ async function upsertGoogleUser(profile: GoogleProfile) {
       },
       select: authUserSelect,
     })
+
+    await invalidateUserCache(existingUser.id)
+    return updatedUser
   }
 
   return prisma.user.create({
@@ -272,6 +276,8 @@ async function updateUserProfile(input: {
       id: input.userId,
     },
   })
+
+  await invalidateUserCache(input.userId)
 
   if (existingUser.picture && existingUser.picture !== nextPicture) {
     await removeUploadedFileByUrl(existingUser.picture)
