@@ -160,6 +160,7 @@ export async function getTeam(req: Request, res: Response) {
             environment: true,
             createdAt: true,
             lastUsedAt: true,
+            fullKey: true,
           },
         },
       },
@@ -186,6 +187,7 @@ function serializeTeamApiKey(apiKey: {
   name: string
   prefix: string
   status: "ACTIVE" | "REVOKED"
+  fullKey?: string | null
 }) {
   return {
     createdAt: apiKey.createdAt.toISOString(),
@@ -196,6 +198,7 @@ function serializeTeamApiKey(apiKey: {
     name: apiKey.name,
     prefix: apiKey.prefix,
     status: apiKey.status,
+    fullKey: apiKey.fullKey ?? null,
   }
 }
 
@@ -246,6 +249,7 @@ export async function createTeamApiKey(req: Request, res: Response) {
         prefix: generatedKey.prefix,
         userId,
         teamId,
+        fullKey: generatedKey.fullKey,
       },
     })
 
