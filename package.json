@@ -8,26 +8,21 @@
     "dev": "tsx watch index.ts",
     "start": "tsx index.ts",
     "typecheck": "tsc --noEmit",
-
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
     "prisma:push": "node ./scripts/prisma-push.js",
-
     "postinstall": "prisma generate --schema=prisma/schema.prisma",
-
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-
   "type": "commonjs",
-
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "@types/multer": "^2.1.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "ioredis": "^5.11.0",
     "multer": "^2.1.1"
   },
-
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
