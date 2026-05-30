@@ -130,5 +130,6 @@ export const env = {
     backendUrl
   ),
   sessionSecret: getRequiredEnv("SESSION_SECRET"),
+  redisUrl: process.env.REDIS_URL?.trim() || "",
   isProduction,
 }
