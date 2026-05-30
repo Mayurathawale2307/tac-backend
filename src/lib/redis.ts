@@ -35,6 +35,15 @@ if (env.redisUrl) {
   console.log("[Redis] REDIS_URL not configured. Redis caching is disabled.")
 }
 
+const isoDateRx = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
+
+export function jsonReviver(key: string, value: any) {
+  if (typeof value === "string" && isoDateRx.test(value)) {
+    return new Date(value)
+  }
+  return value
+}
+
 // In-memory request collapsing Map to prevent cache stampedes
 const pendingRequests = new Map<string, Promise<any>>()
 
@@ -56,7 +65,7 @@ export async function getCachedOrFetch<T>(
   try {
     const cachedData = await redis.get(key)
     if (cachedData !== null) {
-      return JSON.parse(cachedData) as T
+      return JSON.parse(cachedData, jsonReviver) as T
     }
   } catch (error) {
     console.error(`[Redis] Read error on key "${key}":`, error)
@@ -93,7 +102,7 @@ export const cache = {
     if (!redis || !isRedisConnected) return null
     try {
       const data = await redis.get(key)
-      return data ? JSON.parse(data) : null
+      return data ? JSON.parse(data, jsonReviver) : null
     } catch {
       return null
     }
