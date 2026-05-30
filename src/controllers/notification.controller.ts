@@ -1,6 +1,7 @@
 import type { Request, Response } from "express"
 
 import { prisma } from "../lib/prisma"
+import { getCachedOrFetch, invalidateUserCache } from "../lib/redis"
 
 function readParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
@@ -42,45 +43,49 @@ export async function listUserNotifications(req: Request, res: Response) {
     const userId = req.auth!.userId
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100)
 
-    const recipients = await prisma.teamNotificationRecipient.findMany({
-      where: {
-        userId,
-      },
-      include: {
-        notification: {
-          include: {
-            team: {
-              select: {
-                id: true,
-                name: true,
+    const recipients = await getCachedOrFetch(`user:notifications:${userId}`, 300, () =>
+      prisma.teamNotificationRecipient.findMany({
+        where: {
+          userId,
+        },
+        include: {
+          notification: {
+            include: {
+              team: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
-            },
-            sender: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
-                email: true,
-                picture: true,
+              sender: {
+                select: {
+                  id: true,
+                  name: true,
+                  username: true,
+                  email: true,
+                  picture: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: {
-        notification: {
-          createdAt: "desc",
+        orderBy: {
+          notification: {
+            createdAt: "desc",
+          },
         },
-      },
-      take: limit,
-    })
+        take: limit,
+      })
+    )
 
-    const unreadCount = await prisma.teamNotificationRecipient.count({
-      where: {
-        userId,
-        readAt: null,
-      },
-    })
+    const unreadCount = await getCachedOrFetch(`user:notifications:unread_count:${userId}`, 300, () =>
+      prisma.teamNotificationRecipient.count({
+        where: {
+          userId,
+          readAt: null,
+        },
+      })
+    )
 
     res.json({
       notifications: recipients.map(serializeUserNotification),
@@ -131,6 +136,8 @@ export async function markNotificationRead(req: Request, res: Response) {
       },
     })
 
+    await invalidateUserCache(userId)
+
     res.status(204).send()
   } catch (error) {
     console.error("Mark notification read error:", error)
@@ -151,6 +158,8 @@ export async function markAllNotificationsRead(req: Request, res: Response) {
         readAt: new Date(),
       },
     })
+
+    await invalidateUserCache(userId)
 
     res.json({
       updatedCount: result.count,
