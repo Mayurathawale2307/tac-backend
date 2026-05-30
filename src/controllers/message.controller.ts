@@ -1,6 +1,7 @@
 import type { Request, Response } from "express"
 
 import { prisma } from "../lib/prisma"
+import { getCachedOrFetch, cache, invalidateTeamCache } from "../lib/redis"
 import {
   readApiKeyFormFields,
   type SubmittedCustomField,
@@ -107,11 +108,14 @@ async function submitMessage(req: Request, res: Response) {
     return
   }
 
-  const apiKey = await prisma.apiKey.findUnique({
-    where: {
-      keyHash: hashApiKey(submittedApiKey),
-    },
-  })
+  const keyHash = hashApiKey(submittedApiKey)
+  const apiKey = await getCachedOrFetch(`apikey:hash:${keyHash}`, 86400, () =>
+    prisma.apiKey.findUnique({
+      where: {
+        keyHash,
+      },
+    })
+  )
 
   if (!apiKey) {
     await removeUploadedFiles(uploadedFiles)
@@ -222,6 +226,25 @@ async function submitMessage(req: Request, res: Response) {
     return message
   })
 
+  // Evict cache to reflect the new message
+  if (apiKey.userId) {
+    await cache.del(`user:feeds:${apiKey.userId}`)
+  }
+  if (apiKey.teamId) {
+    await invalidateTeamCache(apiKey.teamId)
+    const members = await prisma.teamMember.findMany({
+      where: {
+        teamId: apiKey.teamId,
+      },
+      select: {
+        userId: true,
+      },
+    })
+    for (const member of members) {
+      await cache.del(`user:feeds:${member.userId}`)
+    }
+  }
+
   res.status(201).json({
     message: "Message received successfully.",
     submission: {
@@ -237,16 +260,20 @@ async function submitMessage(req: Request, res: Response) {
 }
 
 async function listMessageFeeds(req: Request, res: Response) {
-  const apiKeys = await prisma.apiKey.findMany({
-    include: {
-      messages: {
-        orderBy: [{ receivedAt: "desc" }],
+  const userId = req.auth!.userId
+  const cacheKey = `user:feeds:${userId}`
+  const apiKeys = await getCachedOrFetch(cacheKey, 300, () =>
+    prisma.apiKey.findMany({
+      include: {
+        messages: {
+          orderBy: [{ receivedAt: "desc" }],
+        },
       },
-    },
-    where: {
-      userId: req.auth!.userId,
-    },
-  })
+      where: {
+        userId,
+      },
+    })
+  )
 
   const feeds = apiKeys
     .map((apiKey) => ({
