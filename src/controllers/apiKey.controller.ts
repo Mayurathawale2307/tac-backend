@@ -23,6 +23,7 @@ function serializeApiKey(apiKey: {
   formFields?: unknown
   prefix: string
   status: "ACTIVE" | "REVOKED"
+  fullKey?: string | null
 }) {
   return {
     createdAt: apiKey.createdAt.toISOString(),
@@ -33,6 +34,7 @@ function serializeApiKey(apiKey: {
     maskedKey: maskApiKey(apiKey.prefix, apiKey.lastFour),
     name: apiKey.name,
     status: formatApiKeyStatus(apiKey.status),
+    fullKey: apiKey.fullKey ?? null,
   }
 }
 
@@ -78,6 +80,7 @@ async function createApiKeyRecord(req: Request, res: Response) {
       name,
       prefix: generatedKey.prefix,
       userId: req.auth!.userId,
+      fullKey: generatedKey.fullKey,
     },
   })
 
