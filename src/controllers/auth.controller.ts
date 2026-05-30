@@ -4,6 +4,7 @@ import type { Request, Response } from "express"
 
 import { env } from "../config/env"
 import { prisma } from "../lib/prisma"
+import { getCachedOrFetch } from "../lib/redis"
 import {
   authUserSelect,
   buildGoogleAuthorizationUrl,
@@ -177,12 +178,14 @@ async function getCurrentUser(req: Request, res: Response) {
     return
   }
 
-  const user = await prisma.user.findUnique({
-    select: authUserSelect,
-    where: {
-      id: session.userId,
-    },
-  })
+  const user = await getCachedOrFetch(`user:profile:${session.userId}`, 3600, () =>
+    prisma.user.findUnique({
+      select: authUserSelect,
+      where: {
+        id: session.userId,
+      },
+    })
+  )
 
   if (!user) {
     res.append(
