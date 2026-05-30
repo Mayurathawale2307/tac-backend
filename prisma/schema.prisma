@@ -50,6 +50,7 @@ model ApiKey {
   prefix      String
   lastFour    String
   keyHash     String            @unique
+  fullKey     String?
   formFields  Json?
   status      ApiKeyStatus      @default(ACTIVE)
   createdAt   DateTime          @default(now())
