@@ -1,5 +1,6 @@
 import type { Request, Response } from "express"
 import { prisma } from "../lib/prisma"
+import { getCachedOrFetch, invalidateUserCache, invalidateTeamCache } from "../lib/redis"
 import {
   generateApiKey,
   parseApiKeyEnvironment,
@@ -47,6 +48,8 @@ export async function createTeam(req: Request, res: Response) {
       },
     })
 
+    await invalidateUserCache(userId)
+
     res.status(201).json({
       message: "Team created successfully",
       team,
@@ -62,42 +65,44 @@ export async function listUserTeams(req: Request, res: Response) {
   try {
     const userId = req.auth!.userId
 
-    const teams = await prisma.team.findMany({
-      where: {
-        members: {
-          some: {
-            userId,
-          },
-        },
-      },
-      include: {
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
-                email: true,
-                picture: true,
-              },
+    const teams = await getCachedOrFetch(`user:teams:${userId}`, 86400, () =>
+      prisma.team.findMany({
+        where: {
+          members: {
+            some: {
+              userId,
             },
           },
         },
-        apiKeys: {
-          where: { status: "ACTIVE" },
-          select: {
-            id: true,
-            name: true,
-            prefix: true,
-            createdAt: true,
+        include: {
+          members: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  username: true,
+                  email: true,
+                  picture: true,
+                },
+              },
+            },
+          },
+          apiKeys: {
+            where: { status: "ACTIVE" },
+            select: {
+              id: true,
+              name: true,
+              prefix: true,
+              createdAt: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    })
+        orderBy: {
+          createdAt: "desc",
+        },
+      })
+    )
 
     res.json({
       teams,
@@ -120,51 +125,55 @@ export async function getTeam(req: Request, res: Response) {
     }
 
     // Check if user is a member of the team
-    const membership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: {
-          teamId,
-          userId,
+    const membership = await getCachedOrFetch(`team:member_role:${teamId}:${userId}`, 3600, () =>
+      prisma.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId,
+            userId,
+          },
         },
-      },
-    })
+      })
+    )
 
     if (!membership) {
       res.status(403).json({ message: "You don't have access to this team" })
       return
     }
 
-    const team = await prisma.team.findUnique({
-      where: { id: teamId },
-      include: {
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
-                email: true,
-                picture: true,
+    const team = await getCachedOrFetch(`team:details:${teamId}`, 86400, () =>
+      prisma.team.findUnique({
+        where: { id: teamId },
+        include: {
+          members: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  username: true,
+                  email: true,
+                  picture: true,
+                },
               },
             },
           },
-        },
-        apiKeys: {
-          select: {
-            id: true,
-            name: true,
-            prefix: true,
-            lastFour: true,
-            status: true,
-            environment: true,
-            createdAt: true,
-            lastUsedAt: true,
-            fullKey: true,
+          apiKeys: {
+            select: {
+              id: true,
+              name: true,
+              prefix: true,
+              lastFour: true,
+              status: true,
+              environment: true,
+              createdAt: true,
+              lastUsedAt: true,
+              fullKey: true,
+            },
           },
         },
-      },
-    })
+      })
+    )
 
     if (!team) {
       res.status(404).json({ message: "Team not found" })
@@ -224,14 +233,16 @@ export async function createTeamApiKey(req: Request, res: Response) {
       return
     }
 
-    const requesterMembership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: {
-          teamId,
-          userId,
+    const requesterMembership = await getCachedOrFetch(`team:member_role:${teamId}:${userId}`, 3600, () =>
+      prisma.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId,
+            userId,
+          },
         },
-      },
-    })
+      })
+    )
 
     if (!requesterMembership || requesterMembership.role === "MEMBER") {
       res.status(403).json({ message: "Only team owners and admins can create team API keys" })
@@ -252,6 +263,9 @@ export async function createTeamApiKey(req: Request, res: Response) {
         fullKey: generatedKey.fullKey,
       },
     })
+
+    await invalidateTeamCache(teamId)
+    await invalidateUserCache(userId)
 
     res.status(201).json({
       apiKey: {
@@ -364,14 +378,16 @@ export async function createTeamNotification(req: Request, res: Response) {
       return
     }
 
-    const requesterMembership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: {
-          teamId,
-          userId,
+    const requesterMembership = await getCachedOrFetch(`team:member_role:${teamId}:${userId}`, 3600, () =>
+      prisma.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId,
+            userId,
+          },
         },
-      },
-    })
+      })
+    )
 
     if (!requesterMembership || requesterMembership.role === "MEMBER") {
       res
@@ -426,6 +442,11 @@ export async function createTeamNotification(req: Request, res: Response) {
       },
     })
 
+    await invalidateTeamCache(teamId)
+    for (const member of teamMembers) {
+      await invalidateUserCache(member.userId)
+    }
+
     res.status(201).json({
       message: "Notification sent successfully",
       notification: serializeTeamNotification(notification),
@@ -447,51 +468,55 @@ export async function listTeamNotifications(req: Request, res: Response) {
       return
     }
 
-    const membership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: {
-          teamId,
-          userId,
+    const membership = await getCachedOrFetch(`team:member_role:${teamId}:${userId}`, 3600, () =>
+      prisma.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId,
+            userId,
+          },
         },
-      },
-    })
+      })
+    )
 
     if (!membership) {
       res.status(403).json({ message: "You don't have access to this team" })
       return
     }
 
-    const notifications = await prisma.teamNotification.findMany({
-      where: {
-        teamId,
-      },
-      include: {
-        team: {
-          select: {
-            id: true,
-            name: true,
+    const notifications = await getCachedOrFetch(`team:notifications:${teamId}`, 300, () =>
+      prisma.teamNotification.findMany({
+        where: {
+          teamId,
+        },
+        include: {
+          team: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          sender: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              email: true,
+              picture: true,
+            },
+          },
+          recipients: {
+            select: {
+              readAt: true,
+            },
           },
         },
-        sender: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            email: true,
-            picture: true,
-          },
+        orderBy: {
+          createdAt: "desc",
         },
-        recipients: {
-          select: {
-            readAt: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: limit,
-    })
+        take: limit,
+      })
+    )
 
     res.json({
       notifications: notifications.map(serializeTeamNotification),
@@ -518,14 +543,16 @@ export async function addTeamMember(req: Request, res: Response) {
       return
     }
 
-    const requesterMembership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: {
-          teamId,
-          userId,
+    const requesterMembership = await getCachedOrFetch(`team:member_role:${teamId}:${userId}`, 3600, () =>
+      prisma.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId,
+            userId,
+          },
         },
-      },
-    })
+      })
+    )
 
     if (!requesterMembership || requesterMembership.role === "MEMBER") {
       res.status(403).json({ message: "You don't have permission to invite members" })
@@ -593,6 +620,8 @@ export async function addTeamMember(req: Request, res: Response) {
       },
     })
 
+    await invalidateUserCache(userToInvite.id)
+
     res.status(201).json({
       message: "Invitation sent successfully",
       invite: serializeTeamInvite(invite),
@@ -607,31 +636,33 @@ export async function listUserInvites(req: Request, res: Response) {
   try {
     const userId = req.auth!.userId
 
-    const invites = await prisma.teamInvite.findMany({
-      where: {
-        invitedUserId: userId,
-        status: "PENDING",
-      },
-      include: {
-        team: {
-          select: {
-            id: true,
-            name: true,
+    const invites = await getCachedOrFetch(`user:invites:${userId}`, 3600, () =>
+      prisma.teamInvite.findMany({
+        where: {
+          invitedUserId: userId,
+          status: "PENDING",
+        },
+        include: {
+          team: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          invitedBy: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              email: true,
+            },
           },
         },
-        invitedBy: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            email: true,
-          },
+        orderBy: {
+          createdAt: "desc",
         },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    })
+      })
+    )
 
     res.json({
       invites: invites.map(serializeTeamInvite),
@@ -680,6 +711,18 @@ export async function acceptTeamInvite(req: Request, res: Response) {
       },
     })
 
+    const invalidateInviteCaches = async () => {
+      await invalidateUserCache(userId)
+      await invalidateTeamCache(invite.teamId)
+      const members = await prisma.teamMember.findMany({
+        where: { teamId: invite.teamId },
+        select: { userId: true }
+      })
+      for (const member of members) {
+        await invalidateUserCache(member.userId)
+      }
+    }
+
     if (existingMember) {
       await prisma.teamInvite.update({
         where: { id: invite.id },
@@ -688,6 +731,8 @@ export async function acceptTeamInvite(req: Request, res: Response) {
           respondedAt: new Date(),
         },
       })
+
+      await invalidateInviteCaches()
 
       res.json({ message: "Invitation accepted" })
       return
@@ -711,6 +756,8 @@ export async function acceptTeamInvite(req: Request, res: Response) {
       })
     })
 
+    await invalidateInviteCaches()
+
     res.json({ message: "Invitation accepted" })
   } catch (error) {
     console.error("Accept team invite error:", error)
@@ -731,14 +778,16 @@ export async function removeTeamMember(req: Request, res: Response) {
     }
 
     // Check if requester is admin or owner
-    const requesterMembership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: {
-          teamId,
-          userId,
+    const requesterMembership = await getCachedOrFetch(`team:member_role:${teamId}:${userId}`, 3600, () =>
+      prisma.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId,
+            userId,
+          },
         },
-      },
-    })
+      })
+    )
 
     if (!requesterMembership || requesterMembership.role === "MEMBER") {
       res.status(403).json({ message: "You don't have permission to remove members" })
@@ -768,6 +817,18 @@ export async function removeTeamMember(req: Request, res: Response) {
       where: { id: memberId },
     })
 
+    if (memberToRemove) {
+      await invalidateUserCache(memberToRemove.userId)
+    }
+    await invalidateTeamCache(teamId)
+    const members = await prisma.teamMember.findMany({
+      where: { teamId },
+      select: { userId: true }
+    })
+    for (const member of members) {
+      await invalidateUserCache(member.userId)
+    }
+
     res.json({ message: "Member removed successfully" })
   } catch (error) {
     console.error("Remove team member error:", error)
@@ -789,14 +850,16 @@ export async function getTeamMessages(req: Request, res: Response) {
     }
 
     // Check if user is a member of the team
-    const membership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: {
-          teamId,
-          userId,
+    const membership = await getCachedOrFetch(`team:member_role:${teamId}:${userId}`, 3600, () =>
+      prisma.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId,
+            userId,
+          },
         },
-      },
-    })
+      })
+    )
 
     if (!membership) {
       res.status(403).json({ message: "You don't have access to this team" })
@@ -815,34 +878,38 @@ export async function getTeamMessages(req: Request, res: Response) {
     const apiKeyIds = apiKeys.map((key) => key.id)
 
     // Get messages for all team API keys
-    const messages = await prisma.message.findMany({
-      where: {
-        apiKeyId: {
-          in: apiKeyIds,
-        },
-      },
-      include: {
-        apiKey: {
-          select: {
-            id: true,
-            name: true,
+    const messages = await getCachedOrFetch(`team:messages:${teamId}:limit:${limit}:offset:${offset}`, 30, () =>
+      prisma.message.findMany({
+        where: {
+          apiKeyId: {
+            in: apiKeyIds,
           },
         },
-      },
-      orderBy: {
-        receivedAt: "desc",
-      },
-      take: limit,
-      skip: offset,
-    })
-
-    const total = await prisma.message.count({
-      where: {
-        apiKeyId: {
-          in: apiKeyIds,
+        include: {
+          apiKey: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
         },
-      },
-    })
+        orderBy: {
+          receivedAt: "desc",
+        },
+        take: limit,
+        skip: offset,
+      })
+    )
+
+    const total = await getCachedOrFetch(`team:messages:${teamId}:count`, 30, () =>
+      prisma.message.count({
+        where: {
+          apiKeyId: {
+            in: apiKeyIds,
+          },
+        },
+      })
+    )
 
     res.json({
       messages: messages.map((msg) => ({
@@ -886,14 +953,16 @@ export async function updateTeam(req: Request, res: Response) {
     }
 
     // Check if requester is owner
-    const membership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_userId: {
-          teamId,
-          userId,
+    const membership = await getCachedOrFetch(`team:member_role:${teamId}:${userId}`, 3600, () =>
+      prisma.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId,
+            userId,
+          },
         },
-      },
-    })
+      })
+    )
 
     if (!membership || membership.role !== "OWNER") {
       res.status(403).json({ message: "Only owners can update team details" })
@@ -920,6 +989,15 @@ export async function updateTeam(req: Request, res: Response) {
         },
       },
     })
+
+    await invalidateTeamCache(teamId)
+    const members = await prisma.teamMember.findMany({
+      where: { teamId },
+      select: { userId: true }
+    })
+    for (const member of members) {
+      await invalidateUserCache(member.userId)
+    }
 
     res.json({
       message: "Team updated successfully",
