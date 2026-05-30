@@ -1,6 +1,7 @@
 import type { Request, Response } from "express"
 
 import { prisma } from "../lib/prisma"
+import { getCachedOrFetch, invalidateUserCache, invalidateApiKeyCache, invalidateTeamCache } from "../lib/redis"
 import {
   normalizeApiKeyFormFields,
   readApiKeyFormFields,
@@ -39,12 +40,16 @@ function serializeApiKey(apiKey: {
 }
 
 async function listApiKeys(req: Request, res: Response) {
-  const apiKeys = await prisma.apiKey.findMany({
-    orderBy: [{ createdAt: "desc" }],
-    where: {
-      userId: req.auth!.userId,
-    },
-  })
+  const userId = req.auth!.userId
+  const cacheKey = `user:apikeys:${userId}`
+  const apiKeys = await getCachedOrFetch(cacheKey, 86400, () =>
+    prisma.apiKey.findMany({
+      orderBy: [{ createdAt: "desc" }],
+      where: {
+        userId,
+      },
+    })
+  )
 
   res.json({
     apiKeys: apiKeys.map(serializeApiKey),
@@ -83,6 +88,8 @@ async function createApiKeyRecord(req: Request, res: Response) {
       fullKey: generatedKey.fullKey,
     },
   })
+
+  await invalidateUserCache(req.auth!.userId)
 
   res.status(201).json({
     apiKey: {
@@ -125,6 +132,12 @@ async function updateApiKeyFormFields(req: Request, res: Response) {
     },
   })
 
+  await invalidateUserCache(req.auth!.userId)
+  await invalidateApiKeyCache(apiKey.keyHash)
+  if (apiKey.teamId) {
+    await invalidateTeamCache(apiKey.teamId)
+  }
+
   res.json({
     apiKey: serializeApiKey(apiKey),
   })
@@ -161,6 +174,12 @@ async function revokeApiKeyRecord(req: Request, res: Response) {
     },
   })
 
+  await invalidateUserCache(req.auth!.userId)
+  await invalidateApiKeyCache(apiKey.keyHash)
+  if (apiKey.teamId) {
+    await invalidateTeamCache(apiKey.teamId)
+  }
+
   res.json({
     apiKey: serializeApiKey(apiKey),
   })
@@ -193,6 +212,12 @@ async function deleteApiKeyRecord(req: Request, res: Response) {
       id: existingApiKey.id,
     },
   })
+
+  await invalidateUserCache(req.auth!.userId)
+  await invalidateApiKeyCache(existingApiKey.keyHash)
+  if (existingApiKey.teamId) {
+    await invalidateTeamCache(existingApiKey.teamId)
+  }
 
   res.status(204).send()
 }
