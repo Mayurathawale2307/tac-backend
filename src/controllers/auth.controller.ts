@@ -29,7 +29,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 function getCookieSecurityOptions() {
   return {
     httpOnly: true,
-    sameSite: env.backendUrl.startsWith("https://") ? "None" : "Lax",
+    sameSite: "None",
     secure: env.backendUrl.startsWith("https://"),
   } as const;
 }
@@ -55,7 +55,6 @@ function getAllowedFrontendOrigin(origin?: string) {
 
   return null;
 }
-
 function getRequestFrontendOrigin(req: Request) {
   const frontendOriginQuery =
     typeof req.query.frontend_origin === "string"
