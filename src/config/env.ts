@@ -1,18 +1,18 @@
-import path from "node:path"
-import fs from "node:fs"
+import path from "node:path";
+import fs from "node:fs";
 
-import dotenv from "dotenv"
+import dotenv from "dotenv";
 
-const projectRoot = path.resolve(__dirname, "../..")
-const nodeEnv = process.env.NODE_ENV?.trim() || "development"
-const isRenderDeployment = process.env.RENDER === "true"
-const isVercelDeployment = process.env.VERCEL === "1"
+const projectRoot = path.resolve(__dirname, "../..");
+const nodeEnv = process.env.NODE_ENV?.trim() || "development";
+const isRenderDeployment = process.env.RENDER === "true";
+const isVercelDeployment = process.env.VERCEL === "1";
 const envFileNames = [
   ".env",
   `.env.${nodeEnv}`,
   ".env.local",
   `.env.${nodeEnv}.local`,
-]
+];
 const envBases = [
   projectRoot,
   path.resolve(projectRoot, "src"),
@@ -20,112 +20,112 @@ const envBases = [
   path.resolve(process.cwd(), "src"),
   path.resolve(process.cwd(), "tac-backend"),
   path.resolve(process.cwd(), "tac-backend/src"),
-]
+];
 const envCandidates = envFileNames.flatMap((fileName) =>
-  envBases.map((basePath) => path.resolve(basePath, fileName))
-)
-const loadedEnvPaths = new Set<string>()
+  envBases.map((basePath) => path.resolve(basePath, fileName)),
+);
+const loadedEnvPaths = new Set<string>();
 
 for (const envPath of envCandidates) {
   if (!loadedEnvPaths.has(envPath) && fs.existsSync(envPath)) {
-    const override = envPath.endsWith(".local")
-    const parsed = dotenv.parse(fs.readFileSync(envPath, "utf8"))
+    const override = envPath.endsWith(".local");
+    const parsed = dotenv.parse(fs.readFileSync(envPath, "utf8"));
 
     for (const [key, value] of Object.entries(parsed)) {
       if (value === "") {
-        continue
+        continue;
       }
 
       if (override || process.env[key] === undefined) {
-        process.env[key] = value
+        process.env[key] = value;
       }
     }
 
-    loadedEnvPaths.add(envPath)
+    loadedEnvPaths.add(envPath);
   }
 }
 
 function getRequiredEnv(name: string) {
-  const value = process.env[name]?.trim()
+  const value = process.env[name]?.trim();
 
   if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`)
+    throw new Error(`Missing required environment variable: ${name}`);
   }
 
-  return value
+  return value;
 }
 
 function normalizeUrl(url: string) {
-  return url.replace(/\/+$/, "")
+  return url.replace(/\/+$/, "");
 }
 
 function parseUrlList(value?: string) {
   if (!value) {
-    return []
+    return [];
   }
 
   return value
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean)
-    .map(normalizeUrl)
+    .map(normalizeUrl);
 }
 
 function normalizeGoogleCallbackUrl(callbackUrl: string, backendUrl: string) {
-  const normalizedBackendUrl = normalizeUrl(backendUrl)
-  const defaultCallbackUrl = `${normalizedBackendUrl}/api/auth/google/callback`
-  const trimmedCallbackUrl = callbackUrl.trim()
+  const normalizedBackendUrl = normalizeUrl(backendUrl);
+  const defaultCallbackUrl = `${normalizedBackendUrl}/api/auth/google/callback`;
+  const trimmedCallbackUrl = callbackUrl.trim();
 
   if (!trimmedCallbackUrl) {
-    return defaultCallbackUrl
+    return defaultCallbackUrl;
   }
 
   try {
-    const url = new URL(trimmedCallbackUrl, normalizedBackendUrl)
+    const url = new URL(trimmedCallbackUrl, normalizedBackendUrl);
 
     if (url.pathname === "/auth/google/callback") {
-      url.pathname = "/api/auth/google/callback"
+      url.pathname = "/api/auth/google/callback";
     }
 
-    return url.toString()
+    return url.toString();
   } catch {
-    return defaultCallbackUrl
+    return defaultCallbackUrl;
   }
 }
 
-const port = Number(process.env.PORT ?? 4000)
-const deployedFrontendOrigin = process.env.FRONTEND_URL ?? "https://tac-frontend-peach.vercel.app"
-const deployedBackendUrl = process.env.BACKEND_URL ?? "https://tac-backend-erf1.onrender.com"
+const port = Number(process.env.PORT ?? 4000);
+const deployedFrontendOrigin =
+  process.env.FRONTEND_URL ?? "https://tac-frontend-peach.vercel.app";
+const deployedBackendUrl =
+  process.env.BACKEND_URL ?? "http://98.82.188.10:4000";
 const isProduction =
-  nodeEnv === "production" ||
-  isRenderDeployment ||
-  isVercelDeployment
+  nodeEnv === "production" || isRenderDeployment || isVercelDeployment;
 const localFrontendOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   "http://localhost:3001",
   "http://127.0.0.1:3001",
-]
+];
 const defaultFrontendUrl = isProduction
   ? deployedFrontendOrigin
-  : localFrontendOrigins[0]
+  : localFrontendOrigins[0];
 const defaultFrontendOrigins = isProduction
   ? [deployedFrontendOrigin]
-  : [...localFrontendOrigins]
+  : [...localFrontendOrigins];
 const configuredFrontendOrigins = [
   ...parseUrlList(process.env.FRONTEND_URL),
   ...parseUrlList(process.env.FRONTEND_URLS),
-]
+];
 const allowedFrontendOrigins = Array.from(
-  new Set([...configuredFrontendOrigins, ...defaultFrontendOrigins])
-)
+  new Set([...configuredFrontendOrigins, ...defaultFrontendOrigins]),
+);
 const frontendUrl = normalizeUrl(
-  process.env.FRONTEND_URL?.trim() ?? defaultFrontendUrl
-)
+  process.env.FRONTEND_URL?.trim() ?? defaultFrontendUrl,
+);
 const backendUrl = normalizeUrl(
   process.env.BACKEND_URL?.trim() ??
-    (isProduction ? deployedBackendUrl : `http://localhost:${port}`)
-)
+    (isProduction ? deployedBackendUrl : `http://localhost:${port}`),
+);
 
 export const env = {
   nodeEnv,
@@ -138,9 +138,9 @@ export const env = {
   googleClientSecret: getRequiredEnv("GOOGLE_CLIENT_SECRET"),
   googleCallbackUrl: normalizeGoogleCallbackUrl(
     process.env.GOOGLE_CALLBACK_URL ?? "",
-    backendUrl
+    backendUrl,
   ),
   sessionSecret: getRequiredEnv("SESSION_SECRET"),
   redisUrl: process.env.REDIS_URL?.trim() || "",
   isProduction,
-}
+};
