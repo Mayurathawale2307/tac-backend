@@ -29,7 +29,18 @@ const loadedEnvPaths = new Set<string>()
 for (const envPath of envCandidates) {
   if (!loadedEnvPaths.has(envPath) && fs.existsSync(envPath)) {
     const override = envPath.endsWith(".local")
-    dotenv.config({ path: envPath, override })
+    const parsed = dotenv.parse(fs.readFileSync(envPath, "utf8"))
+
+    for (const [key, value] of Object.entries(parsed)) {
+      if (value === "") {
+        continue
+      }
+
+      if (override || process.env[key] === undefined) {
+        process.env[key] = value
+      }
+    }
+
     loadedEnvPaths.add(envPath)
   }
 }

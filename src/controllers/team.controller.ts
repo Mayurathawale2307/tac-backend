@@ -530,7 +530,7 @@ export async function listTeamNotifications(req: Request, res: Response) {
 export async function addTeamMember(req: Request, res: Response) {
   try {
     const teamId = readParam(req.params.teamId)
-    const { username, role = "MEMBER" } = req.body
+    const { username, email, role = "MEMBER" } = req.body
     const userId = req.auth!.userId
 
     if (!teamId) {
@@ -538,8 +538,8 @@ export async function addTeamMember(req: Request, res: Response) {
       return
     }
 
-    if (!username || typeof username !== "string") {
-      res.status(400).json({ message: "Username is required" })
+    if (!username && !email) {
+      res.status(400).json({ message: "Username or email is required" })
       return
     }
 
@@ -559,12 +559,35 @@ export async function addTeamMember(req: Request, res: Response) {
       return
     }
 
-    const userToInvite = await prisma.user.findUnique({
-      where: { username },
-    })
+    // Try to find user by username first (case-insensitive), then by email
+    let userToInvite = null
+    
+    if (username) {
+      userToInvite = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { username: { equals: username, mode: 'insensitive' } },
+            { email: { equals: username, mode: 'insensitive' } }
+          ]
+        }
+      })
+    }
+    
+    if (!userToInvite && email) {
+      userToInvite = await prisma.user.findUnique({
+        where: { email }
+      })
+    }
 
     if (!userToInvite) {
-      res.status(404).json({ message: "User with this username not found" })
+      const searchTerm = username || email
+      res.status(404).json({ message: `User with username or email "${searchTerm}" not found. They may not have signed up yet.` })
+      return
+    }
+
+    // Prevent inviting self
+    if (userToInvite.id === userId) {
+      res.status(400).json({ message: "You cannot invite yourself to the team" })
       return
     }
 

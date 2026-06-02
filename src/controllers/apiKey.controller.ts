@@ -75,6 +75,25 @@ async function createApiKeyRecord(req: Request, res: Response) {
     return
   }
 
+  const userId = req.auth!.userId
+  
+  // Check API key limit for free users (5 API keys max)
+  const activeApiKeyCount = await prisma.apiKey.count({
+    where: {
+      userId,
+      status: "ACTIVE",
+    },
+  })
+
+  if (activeApiKeyCount >= 5) {
+    res.status(403).json({
+      message: "Free plan limited to 5 API keys. Upgrade to create more.",
+      limit: 5,
+      current: activeApiKeyCount,
+    })
+    return
+  }
+
   const generatedKey = generateApiKey(environment)
 
   const apiKey = await prisma.apiKey.create({
@@ -84,12 +103,12 @@ async function createApiKeyRecord(req: Request, res: Response) {
       lastFour: generatedKey.lastFour,
       name,
       prefix: generatedKey.prefix,
-      userId: req.auth!.userId,
+      userId,
       fullKey: generatedKey.fullKey,
     },
   })
 
-  await invalidateUserCache(req.auth!.userId)
+  await invalidateUserCache(userId)
 
   res.status(201).json({
     apiKey: {

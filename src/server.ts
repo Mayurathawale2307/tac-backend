@@ -16,12 +16,16 @@ import operationRoutes from "./routes/operation.routes"
 import teamRoutes from "./routes/team.routes"
 import { submitMessage } from "./controllers/message.controller"
 import { upload, uploadsDirectory } from "./utils/uploads"
+import healthRoutes from "./routes/health.routes";
+
 
 const app = express()
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use("/uploads", express.static(path.resolve(uploadsDirectory)))
+// Health Route
+app.use("/api", healthRoutes);
 
 app.options("/api/messages", cors())
 app.post("/api/messages", cors(), upload.any(), submitMessage)
