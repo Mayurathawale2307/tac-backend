@@ -1,27 +1,27 @@
-import crypto from "node:crypto"
+import crypto from "node:crypto";
 
-type ApiKeyFormFieldType = "text" | "textarea" | "tel" | "url" | "file"
+type ApiKeyFormFieldType = "text" | "textarea" | "tel" | "url" | "file";
 
 type ApiKeyFormField = {
-  id: string
-  label: string
-  name: string
-  placeholder: string | null
-  required: boolean
-  type: ApiKeyFormFieldType
-}
+  id: string;
+  label: string;
+  name: string;
+  placeholder: string | null;
+  required: boolean;
+  type: ApiKeyFormFieldType;
+};
 
 type SubmittedCustomField = {
-  fieldId: string
-  fileName?: string
-  fileUrl?: string
-  label: string
-  mimeType?: string
-  name: string
-  size?: number
-  type: ApiKeyFormFieldType
-  value?: string
-}
+  fieldId: string;
+  fileName?: string;
+  fileUrl?: string;
+  label: string;
+  mimeType?: string;
+  name: string;
+  size?: number;
+  type: ApiKeyFormFieldType;
+  value?: string;
+};
 
 const FORM_FIELD_TYPES = new Set<ApiKeyFormFieldType>([
   "text",
@@ -29,19 +29,12 @@ const FORM_FIELD_TYPES = new Set<ApiKeyFormFieldType>([
   "tel",
   "url",
   "file",
-])
+]);
 
-const RESERVED_FIELD_NAMES = new Set([
-  "name",
-  "email",
-  "subject",
-  "message",
-  "phone",
-  "website",
-])
+const RESERVED_FIELD_NAMES = new Set(["name", "email", "subject", "message"]);
 
 function createFieldId() {
-  return crypto.randomUUID()
+  return crypto.randomUUID();
 }
 
 function normalizeFieldName(value: string) {
@@ -49,59 +42,67 @@ function normalizeFieldName(value: string) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
+    .replace(/^_+|_+$/g, "");
 }
 
 function normalizeFieldLabel(value: unknown) {
-  return typeof value === "string" ? value.trim() : ""
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizeFieldPlaceholder(value: unknown) {
   if (typeof value !== "string") {
-    return null
+    return null;
   }
 
-  const trimmedValue = value.trim()
-  return trimmedValue ? trimmedValue : null
+  const trimmedValue = value.trim();
+  return trimmedValue ? trimmedValue : null;
 }
 
 function normalizeFieldType(value: unknown): ApiKeyFormFieldType {
-  if (typeof value === "string" && FORM_FIELD_TYPES.has(value as ApiKeyFormFieldType)) {
-    return value as ApiKeyFormFieldType
+  if (
+    typeof value === "string" &&
+    FORM_FIELD_TYPES.has(value as ApiKeyFormFieldType)
+  ) {
+    return value as ApiKeyFormFieldType;
   }
 
-  return "text"
+  return "text";
 }
 
 function normalizeFieldRequired(value: unknown) {
-  return value === true
+  return value === true;
 }
 
 function normalizeApiKeyFormFields(input: unknown): ApiKeyFormField[] {
   if (!Array.isArray(input)) {
-    return []
+    return [];
   }
 
-  const seenNames = new Set<string>()
-  const normalizedFields: ApiKeyFormField[] = []
+  const seenNames = new Set<string>();
+  const normalizedFields: ApiKeyFormField[] = [];
 
   for (const item of input) {
     if (!item || typeof item !== "object") {
-      continue
+      continue;
     }
 
-    const field = item as Record<string, unknown>
-    const label = normalizeFieldLabel(field.label)
-    const fallbackName = normalizeFieldName(label)
+    const field = item as Record<string, unknown>;
+    const label = normalizeFieldLabel(field.label);
+    const fallbackName = normalizeFieldName(label);
     const name = normalizeFieldName(
-      typeof field.name === "string" ? field.name : fallbackName
-    )
+      typeof field.name === "string" ? field.name : fallbackName,
+    );
 
-    if (!label || !name || RESERVED_FIELD_NAMES.has(name) || seenNames.has(name)) {
-      continue
+    if (
+      !label ||
+      !name ||
+      RESERVED_FIELD_NAMES.has(name) ||
+      seenNames.has(name)
+    ) {
+      continue;
     }
 
-    seenNames.add(name)
+    seenNames.add(name);
 
     normalizedFields.push({
       id:
@@ -113,15 +114,15 @@ function normalizeApiKeyFormFields(input: unknown): ApiKeyFormField[] {
       placeholder: normalizeFieldPlaceholder(field.placeholder),
       required: normalizeFieldRequired(field.required),
       type: normalizeFieldType(field.type),
-    })
+    });
   }
 
-  return normalizedFields.slice(0, 12)
+  return normalizedFields.slice(0, 12);
 }
 
 function readApiKeyFormFields(input: unknown) {
-  return normalizeApiKeyFormFields(input)
+  return normalizeApiKeyFormFields(input);
 }
 
-export type { ApiKeyFormField, ApiKeyFormFieldType, SubmittedCustomField }
-export { readApiKeyFormFields, normalizeApiKeyFormFields }
+export type { ApiKeyFormField, ApiKeyFormFieldType, SubmittedCustomField };
+export { readApiKeyFormFields, normalizeApiKeyFormFields };
