@@ -5,6 +5,7 @@
     "types": ["node"],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "allowJs": true,
     "strict": true,
     "isolatedModules": true,
     "skipLibCheck": true,
