@@ -203,9 +203,19 @@ async function submitMessage(req: Request, res: Response) {
       "phone",
       "website",
     ]);
+    const ignoredBodyFieldNames = new Set([
+      "agree",
+      "privacy",
+      "privacy_policy",
+      "consent",
+    ]);
 
     for (const [key, value] of Object.entries(req.body)) {
-      if (reservedBodyFieldNames.has(key) || configuredFieldNames.has(key)) {
+      if (
+        reservedBodyFieldNames.has(key) ||
+        configuredFieldNames.has(key) ||
+        ignoredBodyFieldNames.has(key)
+      ) {
         continue;
       }
 
