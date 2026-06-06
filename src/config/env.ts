@@ -95,7 +95,7 @@ function normalizeGoogleCallbackUrl(callbackUrl: string, backendUrl: string) {
 
 const port = Number(process.env.PORT ?? 4000);
 const deployedFrontendOrigin =
-  process.env.FRONTEND_URL ?? "https://tac-frontend-peach.vercel.app";
+  process.env.FRONTEND_URL ?? "https://tac-webapp.vercel.app";
 const deployedBackendUrl =
   process.env.BACKEND_URL ?? "https://api.convo-app.online";
 const isProduction =
